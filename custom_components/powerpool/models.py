@@ -8,9 +8,9 @@ why a per-poll unit would break long-term statistics).
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
+import re
 from typing import Any
 
 from homeassistant.util import dt as dt_util
@@ -22,7 +22,6 @@ from .const import (
     RATE_BASES,
     SI_PREFIXES,
 )
-
 
 # A trailing coin qualifier, as in "Equihash (Zcash)". Stripped before
 # normalising so the name still resolves to the "equihash" unit — folding it in

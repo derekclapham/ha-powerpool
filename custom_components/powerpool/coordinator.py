@@ -13,7 +13,6 @@ from .api import PowerPoolApiError, PowerPoolAuthError, PowerPoolClient
 from .const import DOMAIN, LOGGER
 from .models import Account, parse_account
 
-
 # How many consecutive empty responses to accept, once the account has polled
 # successfully at least once, before concluding the API key is dead. PowerPool
 # answers `200 {}` both for a rejected key and (in principle) for a blip on its

@@ -87,7 +87,9 @@ class PowerPoolClient:
         """
         data = await self._get(API_USER, {PARAM_API_KEY: self._api_key})
         if not isinstance(data, dict):
-            raise PowerPoolApiError(f"Unexpected user payload type: {type(data).__name__}")
+            raise PowerPoolApiError(
+                f"Unexpected user payload type: {type(data).__name__}"
+            )
         if not data:
             raise PowerPoolAuthError("API key returned no account data")
         return data
@@ -96,5 +98,7 @@ class PowerPoolClient:
         """Public pool-wide stats (no credential required)."""
         data = await self._get(API_POOL)
         if not isinstance(data, dict):
-            raise PowerPoolApiError(f"Unexpected pool payload type: {type(data).__name__}")
+            raise PowerPoolApiError(
+                f"Unexpected pool payload type: {type(data).__name__}"
+            )
         return data
