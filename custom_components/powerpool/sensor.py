@@ -1,0 +1,343 @@
+"""Sensor platform for the PowerPool integration."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import PERCENTAGE
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.typing import StateType
+
+from .const import COIN_PRECISION, DEFAULT_COIN_PRECISION
+from .coordinator import PowerPoolConfigEntry, PowerPoolCoordinator
+from .entity import (
+    PowerPoolAccountEntity,
+    PowerPoolAlgorithmEntity,
+    PowerPoolWorkerEntity,
+)
+from .models import Account, Algorithm, Worker, from_base_rate, hashrate_unit
+
+# Read-only sensors backed by one coordinator; nothing to serialise on update.
+PARALLEL_UPDATES = 0
+
+
+@dataclass(frozen=True, kw_only=True)
+class CoinSensorDescription(SensorEntityDescription):
+    """A sensor reading one coin's position on the account."""
+
+    value_fn: Callable[[Account, str], StateType | datetime]
+
+
+@dataclass(frozen=True, kw_only=True)
+class AlgorithmSensorDescription(SensorEntityDescription):
+    """A sensor reading the account's aggregate on one algorithm."""
+
+    value_fn: Callable[[Algorithm], StateType]
+    # Rate sensors carry a value in base units/s; the entity renders it in the
+    # algorithm's fixed display unit (see const.ALGORITHM_UNITS).
+    is_rate: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class WorkerSensorDescription(SensorEntityDescription):
+    """A sensor reading one rig."""
+
+    value_fn: Callable[[Worker], StateType]
+    is_rate: bool = False
+
+
+COIN_SENSORS: tuple[CoinSensorDescription, ...] = (
+    CoinSensorDescription(
+        key="balance",
+        translation_key="coin_balance",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda account, ticker: account.balances.get(ticker),
+    ),
+    CoinSensorDescription(
+        key="total_paid",
+        translation_key="coin_total_paid",
+        # TOTAL rather than TOTAL_INCREASING: the payments list the API returns
+        # is finite, so the lifetime sum can step *down* as old payouts age out.
+        state_class=SensorStateClass.TOTAL,
+        value_fn=lambda account, ticker: account.total_paid(ticker) or None,
+    ),
+    CoinSensorDescription(
+        key="last_payout",
+        translation_key="coin_last_payout",
+        value_fn=lambda account, ticker: _last_payout_value(account, ticker),
+    ),
+    CoinSensorDescription(
+        key="last_payout_time",
+        translation_key="coin_last_payout_time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda account, ticker: _last_payout_time(account, ticker),
+    ),
+)
+
+
+ALGORITHM_SENSORS: tuple[AlgorithmSensorDescription, ...] = (
+    AlgorithmSensorDescription(
+        key="hashrate",
+        translation_key="hashrate",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        is_rate=True,
+        value_fn=lambda algorithm: algorithm.hashrate,
+    ),
+    AlgorithmSensorDescription(
+        key="hashrate_avg",
+        translation_key="hashrate_avg",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        is_rate=True,
+        value_fn=lambda algorithm: algorithm.hashrate_avg,
+    ),
+    AlgorithmSensorDescription(
+        key="revenue_24h",
+        translation_key="revenue_24h",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="USD",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda algorithm: algorithm.revenue_24h_usd,
+    ),
+    AlgorithmSensorDescription(
+        key="workers_online",
+        translation_key="workers_online",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="workers",
+        value_fn=lambda algorithm: algorithm.workers_online,
+    ),
+    AlgorithmSensorDescription(
+        key="valid_shares",
+        translation_key="valid_shares",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="shares",
+        value_fn=lambda algorithm: algorithm.valid_shares,
+    ),
+    AlgorithmSensorDescription(
+        key="invalid_shares",
+        translation_key="invalid_shares",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="shares",
+        value_fn=lambda algorithm: algorithm.invalid_shares,
+    ),
+    AlgorithmSensorDescription(
+        key="share_efficiency",
+        translation_key="share_efficiency",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        suggested_display_precision=2,
+        value_fn=lambda algorithm: algorithm.share_efficiency,
+    ),
+)
+
+
+WORKER_SENSORS: tuple[WorkerSensorDescription, ...] = (
+    WorkerSensorDescription(
+        key="hashrate",
+        translation_key="hashrate",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        is_rate=True,
+        value_fn=lambda worker: worker.hashrate,
+    ),
+    WorkerSensorDescription(
+        key="hashrate_avg",
+        translation_key="hashrate_avg",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        is_rate=True,
+        value_fn=lambda worker: worker.hashrate_avg,
+    ),
+    WorkerSensorDescription(
+        key="valid_shares",
+        translation_key="valid_shares",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="shares",
+        value_fn=lambda worker: worker.valid_shares,
+    ),
+    WorkerSensorDescription(
+        key="invalid_shares",
+        translation_key="invalid_shares",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="shares",
+        value_fn=lambda worker: worker.invalid_shares,
+    ),
+    WorkerSensorDescription(
+        key="share_efficiency",
+        translation_key="share_efficiency",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        suggested_display_precision=2,
+        value_fn=lambda worker: worker.share_efficiency,
+    ),
+    WorkerSensorDescription(
+        key="blocks",
+        translation_key="blocks",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="blocks",
+        value_fn=lambda worker: worker.blocks,
+    ),
+)
+
+
+def _last_payout_value(account: Account, ticker: str) -> float | None:
+    """Amount of the most recent payout in one coin."""
+    payment = _last_payment(account, ticker)
+    return payment.value if payment else None
+
+
+def _last_payout_time(account: Account, ticker: str) -> datetime | None:
+    """When the most recent payout in one coin landed."""
+    payment = _last_payment(account, ticker)
+    return payment.when if payment else None
+
+
+def _last_payment(account: Account, ticker: str):
+    """Most recent payment in one coin (payments are already newest-first)."""
+    return next((p for p in account.payments if p.ticker == ticker), None)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: PowerPoolConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up the sensors discovered on the first refresh.
+
+    The coin, algorithm and worker sets come from the account's current payload.
+    Anything that appears later — a new rig, a first payout in a new coin —
+    needs a reload of the entry to gain entities; anything that disappears goes
+    unavailable rather than being removed, so history survives a reboot.
+    """
+    coordinator = entry.runtime_data
+    account = coordinator.data
+    entities: list[SensorEntity] = []
+
+    # A coin counts if it holds a balance or has ever been paid out.
+    tickers = sorted(set(account.balances) | {p.ticker for p in account.payments})
+    entities.extend(
+        PowerPoolCoinSensor(coordinator, ticker, description)
+        for ticker in tickers
+        for description in COIN_SENSORS
+    )
+
+    for algorithm_key, algorithm in account.algorithms.items():
+        entities.extend(
+            PowerPoolAlgorithmSensor(coordinator, algorithm_key, description)
+            for description in ALGORITHM_SENSORS
+        )
+        entities.extend(
+            PowerPoolWorkerSensor(coordinator, algorithm_key, worker_name, description)
+            for worker_name in algorithm.workers
+            for description in WORKER_SENSORS
+        )
+
+    async_add_entities(entities)
+
+
+class PowerPoolCoinSensor(PowerPoolAccountEntity, SensorEntity):
+    """A balance or payout figure for one coin."""
+
+    entity_description: CoinSensorDescription
+
+    def __init__(
+        self,
+        coordinator: PowerPoolCoordinator,
+        ticker: str,
+        description: CoinSensorDescription,
+    ) -> None:
+        """Initialise with the coin as the entity's display unit."""
+        super().__init__(coordinator, f"{ticker}:{description.key}")
+        self.entity_description = description
+        self._ticker = ticker
+        self._attr_translation_placeholders = {"coin": ticker}
+        # Timestamps carry a device class instead of a unit.
+        if description.device_class is not SensorDeviceClass.TIMESTAMP:
+            self._attr_native_unit_of_measurement = ticker
+            self._attr_suggested_display_precision = COIN_PRECISION.get(
+                ticker, DEFAULT_COIN_PRECISION
+            )
+
+    @property
+    def native_value(self) -> StateType | datetime:
+        """Read the figure out of the parsed account."""
+        return self.entity_description.value_fn(self.account, self._ticker)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the payout's transaction id for templating."""
+        if self.entity_description.key != "last_payout":
+            return None
+        payment = _last_payment(self.account, self._ticker)
+        return {"transaction_id": payment.txid} if payment else None
+
+
+class PowerPoolAlgorithmSensor(PowerPoolAlgorithmEntity, SensorEntity):
+    """An account-wide figure for one mining algorithm."""
+
+    entity_description: AlgorithmSensorDescription
+
+    def __init__(
+        self,
+        coordinator: PowerPoolCoordinator,
+        algorithm: str,
+        description: AlgorithmSensorDescription,
+    ) -> None:
+        """Initialise, fixing the display unit for rate sensors."""
+        super().__init__(coordinator, algorithm, description.key)
+        self.entity_description = description
+        if description.is_rate:
+            self._attr_native_unit_of_measurement = hashrate_unit(algorithm)
+
+    @property
+    def native_value(self) -> StateType:
+        """Read the figure, converting rates into the fixed display unit."""
+        algorithm = self.algorithm
+        if algorithm is None:
+            return None
+        value = self.entity_description.value_fn(algorithm)
+        if self.entity_description.is_rate:
+            return from_base_rate(value, hashrate_unit(self._algorithm))
+        return value
+
+
+class PowerPoolWorkerSensor(PowerPoolWorkerEntity, SensorEntity):
+    """A figure for one physical rig."""
+
+    entity_description: WorkerSensorDescription
+
+    def __init__(
+        self,
+        coordinator: PowerPoolCoordinator,
+        algorithm: str,
+        worker: str,
+        description: WorkerSensorDescription,
+    ) -> None:
+        """Initialise, fixing the display unit for rate sensors."""
+        super().__init__(coordinator, algorithm, worker, description.key)
+        self.entity_description = description
+        if description.is_rate:
+            self._attr_native_unit_of_measurement = hashrate_unit(algorithm)
+
+    @property
+    def native_value(self) -> StateType:
+        """Read the figure, converting rates into the fixed display unit."""
+        worker = self.worker
+        if worker is None:
+            return None
+        value = self.entity_description.value_fn(worker)
+        if self.entity_description.is_rate:
+            return from_base_rate(value, hashrate_unit(self._algorithm))
+        return value

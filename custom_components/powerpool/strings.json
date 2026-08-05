@@ -1,0 +1,73 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a PowerPool account",
+        "description": "Paste the API key from your PowerPool dashboard. Your username is read from the account automatically.",
+        "data": {
+          "api_key": "API key"
+        },
+        "data_description": {
+          "api_key": "Found on your PowerPool dashboard. Changing your PowerPool password resets the key, and you will be asked to enter the new one."
+        }
+      },
+      "account": {
+        "title": "Choose an account",
+        "description": "This API key unlocks more than one account. Pick the one to add — run the setup again to add the others.",
+        "data": {
+          "username": "Account"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update the PowerPool API key",
+        "description": "The API key for {username} is no longer accepted. This normally means the PowerPool password was changed, which resets the key. Paste the new one from the dashboard.",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to reach PowerPool. Check Home Assistant has internet access and try again.",
+      "invalid_auth": "That API key was rejected. Copy it again from your PowerPool dashboard.",
+      "no_accounts": "The key was accepted but no mining account came back. Check the key belongs to a PowerPool mining account.",
+      "account_mismatch": "That key belongs to a different PowerPool account. Enter the key for the account named above, or add the other account as a separate integration entry."
+    },
+    "abort": {
+      "already_configured": "This PowerPool account is already set up.",
+      "reauth_successful": "The API key was updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "PowerPool options",
+        "data": {
+          "scan_interval": "Poll interval (seconds)"
+        },
+        "data_description": {
+          "scan_interval": "How often to fetch account stats. PowerPool reports rolling averages, so polling faster than a minute adds load without adding detail."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "coin_balance": { "name": "{coin} balance" },
+      "coin_total_paid": { "name": "{coin} total paid" },
+      "coin_last_payout": { "name": "{coin} last payout" },
+      "coin_last_payout_time": { "name": "{coin} last payout time" },
+      "hashrate": { "name": "Hashrate" },
+      "hashrate_avg": { "name": "Hashrate (average)" },
+      "revenue_24h": { "name": "Estimated revenue (24h)" },
+      "workers_online": { "name": "Workers online" },
+      "valid_shares": { "name": "Accepted shares" },
+      "invalid_shares": { "name": "Rejected shares" },
+      "share_efficiency": { "name": "Share efficiency" },
+      "blocks": { "name": "Blocks found" }
+    },
+    "binary_sensor": {
+      "mining": { "name": "Mining" },
+      "worker_online": { "name": "Online" }
+    }
+  }
+}
