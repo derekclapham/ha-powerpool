@@ -4,6 +4,21 @@ All notable changes to this integration are documented here.
 
 ## [0.1.0] - 2026-08-05
 
+### Features
+- Add PowerPool mining pool integration
+- Create entities only for what the account actually mines
+
+### Fixes
+- Stop account-wide share totals from corrupting long-term statistics
+- Correct revenue state class and surface silent failure modes
+- Declare the real Home Assistant minimum version
+
+### Documentation
+- Rename "Blocks found" to "Blocks credited"
+- Update README for accuracy
+
+## [0.1.0] - 2026-08-05
+
 Initial release. Requires Home Assistant 2025.3 or newer.
 
 ### Features
