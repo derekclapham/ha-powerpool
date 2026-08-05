@@ -12,15 +12,39 @@ on:
 permissions:
   contents: write
 
+# Serialise publishes of the same tag. `gh release upload --clobber` deletes
+# before it uploads, so two overlapping runs could otherwise interleave and
+# leave whichever zip finished last attached, with nothing to flag it.
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
 jobs:
   build-zip:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Nothing past checkout needs git auth — gh authenticates with
+          # GH_TOKEN — so don't leave a usable credential in .git/config where
+          # a later step could reach it.
+          persist-credentials: false
       - name: Build versioned zip
+        env:
+          # The tag reaches the script as an environment variable and is never
+          # interpolated into the script body. `${{ }}` is substituted before
+          # bash parses the line, so quoting would not contain it, and git
+          # permits $, backticks, ; | && and $IFS in a ref name — a hostile tag
+          # would otherwise execute as code in a job holding contents: write.
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          version="${{ github.event.release.tag_name }}"
-          version="${version#v}"
+          # Belt and braces: refuse anything that isn't a plain semver tag, so
+          # a surprising ref name fails the build instead of being interpreted.
+          if ! printf '%s' "$TAG" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::Refusing to build from a non-semver tag: $TAG"
+            exit 1
+          fi
+          version="${TAG#v}"
           cd custom_components/powerpool
           jq --arg v "$version" '.version = $v' manifest.json > manifest.tmp
           mv manifest.tmp manifest.json
@@ -28,4 +52,9 @@ jobs:
       - name: Attach zip to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" powerpool.zip --clobber
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          # Ships alongside the zip so a later swap of the asset can be
+          # detected after the fact, rather than only suspected.
+          sha256sum powerpool.zip > SHA256SUMS
+          gh release upload "$TAG" powerpool.zip SHA256SUMS --clobber

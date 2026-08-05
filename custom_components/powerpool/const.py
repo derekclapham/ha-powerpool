@@ -74,6 +74,42 @@ ALGORITHM_UNITS: dict[str, str] = {
 }
 DEFAULT_HASHRATE_UNIT = "GH/s"
 
+# --- limits on untrusted payload data ------------------------------------------
+# Everything below `/api/user` is attacker-controlled if the pool is compromised
+# or intercepted. Each worker becomes a Home Assistant device carrying eight
+# entities, and the device and entity registries are held in memory and rewritten
+# to .storage on every change — so an unbounded worker list is a durable,
+# restart-surviving denial of service, not just a slow poll. These caps are far
+# above any real mining operation.
+MAX_WORKERS_PER_ALGORITHM = 250
+# Also capped across the whole entry: the per-algorithm limit alone would still
+# allow MAX_ALGORITHMS by MAX_WORKERS_PER_ALGORITHM devices, and Home Assistant
+# enforces no device limit of its own — only a 10,000 cap on *entities*, which
+# devices created during setup bypass entirely.
+MAX_WORKERS_PER_ENTRY = 500
+MAX_ALGORITHMS = 32
+MAX_PAYMENTS = 500
+# Distinct payout coins. Each becomes four sensors on the account device, and
+# the set is drawn from payment tickers as well as balances.
+MAX_COINS = 32
+# Names reach device names, entity ids and log lines.
+MAX_NAME_LENGTH = 64
+
+# Ceiling on any counter or amount taken from the API. Real accounts report
+# share counts in the millions, so this leaves ample headroom while guaranteeing
+# two things: summing the per-entry maximum of them cannot overflow to infinity
+# (a non-finite sensor state is rejected by Home Assistant, which leaves the
+# entity frozen at its last value rather than unavailable — a sensor that lies
+# quietly), and a pool alternating an enormous value with zero cannot be read as
+# a meter reset, which would inflate long-term statistics irreversibly.
+MAX_COUNTER_VALUE = 1e15
+
+# Ceiling on a single API response. A real payload is a few KB; without a cap a
+# compressed reply can inflate to hundreds of MB in memory before it is parsed
+# (aiohttp decompresses transparently and applies no ratio limit), which will
+# OOM a small Home Assistant host.
+MAX_RESPONSE_BYTES = 2_000_000
+
 # Display precision for coin balances and payouts. Most coins are quoted in
 # eight decimals; stablecoins read better at two.
 COIN_PRECISION: dict[str, int] = {"USDC": 2, "USDT": 2}

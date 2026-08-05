@@ -114,7 +114,20 @@ Devices can be renamed in Home Assistant if you want shorter entity IDs — rena
 
 - Pool-wide public statistics (`/api/pool`) — pool hashrate, miner counts, block counts and pay rates.
 - Backfilling the account's earnings history into long-term statistics.
-- Brand icons and logos.
+
+## Security
+
+This integration holds a credential and reports on money, so it is written with
+that in mind: the pool's responses are treated as untrusted input, the API key is
+kept out of logs and diagnostics, and payout amounts are redacted from anything
+meant to be shared. [SECURITY.md](SECURITY.md) sets out the principles, what the
+integration can and cannot protect you from, and how to report a vulnerability
+privately.
+
+Worth knowing up front: PowerPool's API is read-only, and this integration only
+ever reads. A leaked API key exposes your mining and payout data — which is worth
+protecting, since amounts are searchable on-chain — but it cannot move funds or
+change a payout address.
 
 ## Credits
 

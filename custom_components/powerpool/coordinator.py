@@ -87,9 +87,13 @@ class PowerPoolCoordinator(DataUpdateCoordinator[Account]):
         # that reported success. Fail the update instead, so the entities go
         # unavailable with a reason attached.
         if not isinstance(payload.get(self.username), dict):
+            # Both halves are repr'd: these are raw response keys, so without
+            # it a key containing a newline would forge a log entry and an ANSI
+            # escape would rewrite the terminal of anyone tailing the log.
+            others = ", ".join(repr(k) for k in sorted(payload))
             raise UpdateFailed(
                 f"PowerPool no longer reports an account named {self.username!r}; "
-                f"it now returns: {', '.join(sorted(payload)) or 'nothing'}"
+                f"it now returns: {others or 'nothing'}"
             )
 
         return parse_account(payload, self.username)

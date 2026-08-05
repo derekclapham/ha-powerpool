@@ -2,6 +2,27 @@
 
 All notable changes to this integration are documented here.
 
+## [0.2.0] - 2026-08-05
+
+### Features
+- Add brand icons and logos for improved visual identification.
+
+### Improvements
+- Harden security against hostile or compromised pool API interactions.
+- Strengthen release pipeline protection against tag-name injection attacks.
+- Reinforce aggregate bounds and device removal capabilities.
+
+### Documentation
+- Add SECURITY.md with comprehensive security guidelines and disclosure information.
+
+## [Unreleased]
+
+### Features
+- Ship brand icons and logos with the integration
+
+### Internal
+- Drop the `ignore: brands` CI workaround now that the brands check can pass
+
 ## [0.1.0] - 2026-08-05
 
 ### Features
