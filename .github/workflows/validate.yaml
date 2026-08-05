@@ -6,6 +6,12 @@ on:
   schedule:
     - cron: "30 4 * * *"
 
+# Validation only ever reads the checkout. Stated explicitly rather than relying
+# on the repository's default token permission, which an org or repo setting
+# could widen later without anyone revisiting this file.
+permissions:
+  contents: read
+
 jobs:
   hassfest:
     name: Hassfest
