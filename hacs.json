@@ -1,6 +1,6 @@
 {
   "name": "PowerPool",
-  "homeassistant": "2025.1.0",
+  "homeassistant": "2025.3.0",
   "zip_release": true,
   "filename": "powerpool.zip"
 }
