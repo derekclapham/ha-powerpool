@@ -136,6 +136,13 @@ ALGORITHM_SENSORS: tuple[AlgorithmSensorDescription, ...] = (
         value_fn=lambda algorithm: algorithm.invalid_shares,
     ),
     AlgorithmSensorDescription(
+        key="stale_shares",
+        translation_key="stale_shares",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="shares",
+        value_fn=lambda algorithm: algorithm.stale_shares,
+    ),
+    AlgorithmSensorDescription(
         key="share_efficiency",
         translation_key="share_efficiency",
         state_class=SensorStateClass.MEASUREMENT,
@@ -176,6 +183,13 @@ WORKER_SENSORS: tuple[WorkerSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement="shares",
         value_fn=lambda worker: worker.invalid_shares,
+    ),
+    WorkerSensorDescription(
+        key="stale_shares",
+        translation_key="stale_shares",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="shares",
+        value_fn=lambda worker: worker.stale_shares,
     ),
     WorkerSensorDescription(
         key="share_efficiency",
@@ -219,7 +233,16 @@ async def async_setup_entry(
 ) -> None:
     """Set up the sensors discovered on the first refresh.
 
-    The coin, algorithm and worker sets come from the account's current payload.
+    PowerPool reports every algorithm and payout coin it supports on every
+    account, nearly all of them permanently zero, so the two are filtered
+    differently:
+
+    * Algorithms the account does not mine are skipped entirely — each one
+      would otherwise create its own empty device.
+    * Coins the account has never held live on the existing account device, so
+      they are created but disabled, and can be switched on from the device
+      page the moment a payout in one of them matters.
+
     Anything that appears later — a new rig, a first payout in a new coin —
     needs a reload of the entry to gain entities; anything that disappears goes
     unavailable rather than being removed, so history survives a reboot.
@@ -228,15 +251,16 @@ async def async_setup_entry(
     account = coordinator.data
     entities: list[SensorEntity] = []
 
-    # A coin counts if it holds a balance or has ever been paid out.
-    tickers = sorted(set(account.balances) | {p.ticker for p in account.payments})
-    entities.extend(
-        PowerPoolCoinSensor(coordinator, ticker, description)
-        for ticker in tickers
-        for description in COIN_SENSORS
-    )
+    active_coins = account.active_coins
+    for ticker in sorted(set(account.balances) | {p.ticker for p in account.payments}):
+        entities.extend(
+            PowerPoolCoinSensor(
+                coordinator, ticker, description, enabled=ticker in active_coins
+            )
+            for description in COIN_SENSORS
+        )
 
-    for algorithm_key, algorithm in account.algorithms.items():
+    for algorithm_key, algorithm in account.active_algorithms.items():
         entities.extend(
             PowerPoolAlgorithmSensor(coordinator, algorithm_key, description)
             for description in ALGORITHM_SENSORS
@@ -260,11 +284,15 @@ class PowerPoolCoinSensor(PowerPoolAccountEntity, SensorEntity):
         coordinator: PowerPoolCoordinator,
         ticker: str,
         description: CoinSensorDescription,
+        *,
+        enabled: bool,
     ) -> None:
         """Initialise with the coin as the entity's display unit."""
         super().__init__(coordinator, f"{ticker}:{description.key}")
         self.entity_description = description
         self._ticker = ticker
+        # A coin the account has never held is registered but switched off.
+        self._attr_entity_registry_enabled_default = enabled
         self._attr_translation_placeholders = {"coin": ticker}
         # Timestamps carry a device class instead of a unit.
         if description.device_class is not SensorDeviceClass.TIMESTAMP:

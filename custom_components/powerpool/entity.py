@@ -24,6 +24,41 @@ from .models import Account, Algorithm, Worker, algorithm_label
 CONFIGURATION_URL = "https://powerpool.io/dashboard"
 
 
+def account_device_info(username: str) -> DeviceInfo:
+    """Device describing the account itself — the root of the tree."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, username)},
+        manufacturer="PowerPool",
+        model="Mining account",
+        name=f"PowerPool {username}",
+        configuration_url=CONFIGURATION_URL,
+    )
+
+
+def algorithm_device_info(username: str, algorithm: str) -> DeviceInfo:
+    """Device for one algorithm, nested under the account."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{username}:{algorithm}")},
+        manufacturer="PowerPool",
+        model="Mining algorithm",
+        name=f"PowerPool {username} {algorithm_label(algorithm)}",
+        via_device=(DOMAIN, username),
+        configuration_url=CONFIGURATION_URL,
+    )
+
+
+def worker_device_info(username: str, algorithm: str, worker: str) -> DeviceInfo:
+    """Device for one rig, nested under its algorithm."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{username}:{algorithm}:{worker}")},
+        manufacturer="PowerPool",
+        model="Mining worker",
+        name=f"PowerPool {username} {worker}",
+        via_device=(DOMAIN, f"{username}:{algorithm}"),
+        configuration_url=CONFIGURATION_URL,
+    )
+
+
 class PowerPoolEntity(CoordinatorEntity[PowerPoolCoordinator]):
     """Common plumbing for every PowerPool entity."""
 
@@ -43,13 +78,7 @@ class PowerPoolAccountEntity(PowerPoolEntity):
         super().__init__(coordinator)
         username = coordinator.username
         self._attr_unique_id = f"{username}:{key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, username)},
-            manufacturer="PowerPool",
-            model="Mining account",
-            name=f"PowerPool {username}",
-            configuration_url=CONFIGURATION_URL,
-        )
+        self._attr_device_info = account_device_info(username)
 
 
 class PowerPoolAlgorithmEntity(PowerPoolEntity):
@@ -63,14 +92,7 @@ class PowerPoolAlgorithmEntity(PowerPoolEntity):
         username = coordinator.username
         self._algorithm = algorithm
         self._attr_unique_id = f"{username}:{algorithm}:{key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{username}:{algorithm}")},
-            manufacturer="PowerPool",
-            model="Mining algorithm",
-            name=f"PowerPool {username} {algorithm_label(algorithm)}",
-            via_device=(DOMAIN, username),
-            configuration_url=CONFIGURATION_URL,
-        )
+        self._attr_device_info = algorithm_device_info(username, algorithm)
 
     @property
     def algorithm(self) -> Algorithm | None:
@@ -99,14 +121,7 @@ class PowerPoolWorkerEntity(PowerPoolEntity):
         self._algorithm = algorithm
         self._worker = worker
         self._attr_unique_id = f"{username}:{algorithm}:{worker}:{key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{username}:{algorithm}:{worker}")},
-            manufacturer="PowerPool",
-            model="Mining worker",
-            name=f"PowerPool {username} {worker}",
-            via_device=(DOMAIN, f"{username}:{algorithm}"),
-            configuration_url=CONFIGURATION_URL,
-        )
+        self._attr_device_info = worker_device_info(username, algorithm, worker)
 
     @property
     def worker(self) -> Worker | None:

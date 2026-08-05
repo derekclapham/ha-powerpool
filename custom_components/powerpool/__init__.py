@@ -5,12 +5,15 @@ from __future__ import annotations
 from datetime import timedelta
 
 from homeassistant.const import CONF_API_KEY, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import PowerPoolClient
 from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, PLATFORMS
 from .coordinator import PowerPoolConfigEntry, PowerPoolCoordinator
+from .entity import account_device_info, algorithm_device_info, worker_device_info
+from .models import Account
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PowerPoolConfigEntry) -> bool:
@@ -31,10 +34,42 @@ async def async_setup_entry(hass: HomeAssistant, entry: PowerPoolConfigEntry) ->
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
+    _register_devices(hass, entry, coordinator.data, entry.data[CONF_USERNAME])
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Reload (rebuilding the coordinator on the new interval) when options change.
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
+
+
+@callback
+def _register_devices(
+    hass: HomeAssistant,
+    entry: PowerPoolConfigEntry,
+    account: Account,
+    username: str,
+) -> None:
+    """Create the account/algorithm/worker devices, parents first.
+
+    The platforms would otherwise each create their own devices in whatever
+    order they happen to load, and a worker referencing its algorithm through
+    `via_device` before that algorithm device exists is an error Home Assistant
+    now warns about and intends to stop accepting. Registering the tree here,
+    top down, means every parent is present before anything points at it.
+    """
+    registry = dr.async_get(hass)
+    registry.async_get_or_create(
+        config_entry_id=entry.entry_id, **account_device_info(username)
+    )
+    for algorithm_key, algorithm in account.active_algorithms.items():
+        registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            **algorithm_device_info(username, algorithm_key),
+        )
+        for worker_name in algorithm.workers:
+            registry.async_get_or_create(
+                config_entry_id=entry.entry_id,
+                **worker_device_info(username, algorithm_key, worker_name),
+            )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: PowerPoolConfigEntry) -> bool:

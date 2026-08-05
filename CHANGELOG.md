@@ -16,7 +16,13 @@ Initial release.
 - Binary sensors for account mining state and per-worker online state
 - Configurable poll interval via the options flow
 
+### Fixes
+- Read the payout transaction id from `txid`, the field the API actually sends, rather than the `txID` the published docs describe
+- Capture the undocumented `stale_shares` figure and count it against share efficiency, so late work is not silently treated as accepted
+- Register the account, algorithm and worker devices parents-first during setup, instead of letting each platform create them in load order and reference a `via_device` that does not exist yet
+
 ### Internal
+- Skip algorithms the account does not mine, and create coins it has never held in a disabled state, since PowerPool returns all eight algorithms and all ten payout coins on every account regardless of use
 - Hashrates normalised to base units on ingest and rendered in a unit fixed per algorithm, so a changing source unit cannot break long-term statistics
 - API keys scrubbed from error messages and redacted from diagnostics
 - Empty API responses tolerated for a few polls before triggering reauthentication, since PowerPool signals a rejected key with `200 {}` rather than an HTTP error

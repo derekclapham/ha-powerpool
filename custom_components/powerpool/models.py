@@ -133,6 +133,7 @@ class Worker:
     hashrate_avg: float | None  # base units/s
     valid_shares: float | None
     invalid_shares: float | None
+    stale_shares: float | None
     blocks: int | None
 
     @property
@@ -143,7 +144,7 @@ class Worker:
     @property
     def share_efficiency(self) -> float | None:
         """Accepted shares as a percentage of all shares submitted."""
-        return _efficiency(self.valid_shares, self.invalid_shares)
+        return _efficiency(self.valid_shares, self.invalid_shares, self.stale_shares)
 
     @classmethod
     def parse(cls, raw: dict[str, Any]) -> Worker | None:
@@ -160,6 +161,8 @@ class Worker:
             ),
             valid_shares=_num(raw.get("valid_shares")),
             invalid_shares=_num(raw.get("invalid_shares")),
+            # Undocumented, but present on every worker the API returns.
+            stale_shares=_num(raw.get("stale_shares")),
             blocks=int(blocks) if blocks is not None else None,
         )
 
@@ -200,9 +203,30 @@ class Algorithm:
         return _sum_or_none(w.invalid_shares for w in self.workers.values())
 
     @property
+    def stale_shares(self) -> float | None:
+        """Stale shares summed across the account's rigs."""
+        return _sum_or_none(w.stale_shares for w in self.workers.values())
+
+    @property
     def share_efficiency(self) -> float | None:
         """Accepted shares as a percentage of all shares submitted."""
-        return _efficiency(self.valid_shares, self.invalid_shares)
+        return _efficiency(self.valid_shares, self.invalid_shares, self.stale_shares)
+
+    @property
+    def is_active(self) -> bool:
+        """True when the account shows any sign of mining this algorithm.
+
+        PowerPool returns every algorithm it supports on every account, almost
+        all of them all-zero, so this is what keeps eight dead device trees out
+        of Home Assistant. Having a worker counts even at zero hashrate: a rig
+        that is powered off is still one the user owns.
+        """
+        return bool(
+            self.workers
+            or self.hashrate
+            or self.hashrate_avg
+            or self.revenue_24h_usd
+        )
 
 
 @dataclass
@@ -221,7 +245,9 @@ class Payment:
         ticker = raw.get("ticker")
         if value is None or not isinstance(ticker, str) or not ticker:
             return None
-        txid = raw.get("txID")
+        # The published docs say "txID"; the API actually sends "txid". Accept
+        # both so this keeps working whichever way PowerPool settles.
+        txid = raw.get("txid") or raw.get("txID")
         return cls(
             ticker=ticker.upper(),
             value=value,
@@ -253,6 +279,22 @@ class Account:
         """True when any rig on any algorithm is currently hashing."""
         return any(algo.workers_online for algo in self.algorithms.values())
 
+    @property
+    def active_algorithms(self) -> dict[str, Algorithm]:
+        """Only the algorithms this account actually mines."""
+        return {k: v for k, v in self.algorithms.items() if v.is_active}
+
+    @property
+    def active_coins(self) -> set[str]:
+        """Coins the account holds a balance in or has ever been paid in.
+
+        PowerPool lists every payout coin it supports with a zero balance, so
+        without this every account would get four sensors for each of ten coins.
+        """
+        return {ticker for ticker, amount in self.balances.items() if amount} | {
+            payment.ticker for payment in self.payments
+        }
+
 
 def _sum_or_none(values: Any) -> float | None:
     """Sum an iterable, returning None when it holds no numbers at all."""
@@ -260,11 +302,18 @@ def _sum_or_none(values: Any) -> float | None:
     return sum(present) if present else None
 
 
-def _efficiency(valid: float | None, invalid: float | None) -> float | None:
-    """Accepted shares as a percentage of total shares submitted."""
+def _efficiency(
+    valid: float | None, invalid: float | None, stale: float | None = None
+) -> float | None:
+    """Accepted shares as a percentage of every share submitted.
+
+    Stale shares — submitted, but too late to count — sit in the denominator
+    alongside rejects, so this reads as "how much of the work sent actually
+    earned anything".
+    """
     if valid is None:
         return None
-    total = valid + (invalid or 0)
+    total = valid + (invalid or 0) + (stale or 0)
     if total <= 0:
         return None
     return round(valid / total * 100, 2)

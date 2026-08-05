@@ -27,7 +27,7 @@ async def async_setup_entry(
     entities: list[BinarySensorEntity] = [PowerPoolMiningSensor(coordinator)]
     entities.extend(
         PowerPoolWorkerOnlineSensor(coordinator, algorithm_key, worker_name)
-        for algorithm_key, algorithm in account.algorithms.items()
+        for algorithm_key, algorithm in account.active_algorithms.items()
         for worker_name in algorithm.workers
     )
     async_add_entities(entities)

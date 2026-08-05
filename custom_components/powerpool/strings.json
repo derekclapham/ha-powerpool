@@ -62,6 +62,7 @@
       "workers_online": { "name": "Workers online" },
       "valid_shares": { "name": "Accepted shares" },
       "invalid_shares": { "name": "Rejected shares" },
+      "stale_shares": { "name": "Stale shares" },
       "share_efficiency": { "name": "Share efficiency" },
       "blocks": { "name": "Blocks found" }
     },

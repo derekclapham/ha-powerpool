@@ -81,20 +81,22 @@ Devices can be renamed in Home Assistant if you want shorter entity IDs — rena
 | Hashrate (average) | The pool's rolling average |
 | Estimated revenue (24h) | PowerPool's own USD projection |
 | Workers online | Rigs currently submitting work |
-| Accepted / rejected shares | Summed across the account's rigs |
-| Share efficiency | Accepted shares as a percentage of all shares — a good health signal |
+| Accepted / rejected / stale shares | Summed across the account's rigs |
+| Share efficiency | Accepted shares as a percentage of every share submitted, counting rejects and stales — a good health signal |
 
 ### Worker
 
 | Entity | Notes |
 | --- | --- |
 | Hashrate / Hashrate (average) | Same fixed unit as its algorithm |
-| Accepted / rejected shares | This rig only |
+| Accepted / rejected / stale shares | This rig only |
 | Share efficiency | This rig only |
 | Blocks found | Blocks this rig has been credited with |
 | Online | On while the rig reports a non-zero hashrate |
 
 ## Behaviour worth knowing
+
+**Only what you actually mine gets entities.** PowerPool returns every algorithm and payout coin it supports on every account, nearly all of them permanently zero — left alone that is around a hundred entities for a single-rig account. Algorithms you do not mine are skipped entirely, since each one would otherwise add an empty device. Coins you have never held live on the existing account device, so they *are* created but arrive switched off: open the account device, choose **+N disabled entities**, and enable any you want to watch.
 
 **New workers need a reload.** Devices and entities are created from what the account reports when the entry loads. Point a new rig at the pool and it appears after you reload the integration entry (**⋮ → Reload**). Existing rigs need nothing.
 
