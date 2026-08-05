@@ -7,7 +7,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import API_BASE_URL, API_POOL, API_USER, PARAM_API_KEY
+from .const import API_BASE_URL, API_USER, PARAM_API_KEY
 
 # A generous single timeout covers connect + read. A slow or unreachable API
 # surfaces as PowerPoolApiError, which the coordinator turns into UpdateFailed.
@@ -92,13 +92,4 @@ class PowerPoolClient:
             )
         if not data:
             raise PowerPoolAuthError("API key returned no account data")
-        return data
-
-    async def pool(self) -> dict[str, Any]:
-        """Public pool-wide stats (no credential required)."""
-        data = await self._get(API_POOL)
-        if not isinstance(data, dict):
-            raise PowerPoolApiError(
-                f"Unexpected pool payload type: {type(data).__name__}"
-            )
         return data

@@ -102,7 +102,9 @@ Devices can be renamed in Home Assistant if you want shorter entity IDs — rena
 
 **New rigs, algorithms and coins need a reload.** Devices and entities are created from what the account reports when the entry loads. Point a new rig at the pool, start mining an algorithm you did not before, or take a first payout in a new coin, and those entities appear after you reload the integration entry (**⋮ → Reload**). Everything already present needs nothing.
 
-**A rig that disappears goes unavailable, not missing.** If a miner is unplugged or reboots, PowerPool stops listing it and its entities become unavailable — they are never removed, so history survives. `Online` turning *off* means something different: the rig is still known to the pool but has fallen to zero hashrate.
+**A rig that disappears goes unavailable, not missing.** If a miner is unplugged or reboots, PowerPool stops listing it and its entities become unavailable — they are never removed, so history survives. `Online` turning *off* means something different: the rig is still known to the pool but has fallen to zero hashrate. When a rig is gone for good, its device can be deleted from the device page; devices the account still reports refuse deletion, so a rig that is merely powered off is safe.
+
+**Share totals are per rig, not per account, for long-term statistics.** The account-wide accepted/rejected/stale figures are sums over the rigs currently being reported, so they step down whenever one drops out or the pool resets its counter. Recording that as an ever-increasing total would corrupt the statistics, so those three carry no state class and are there for at-a-glance reading. The per-worker equivalents are proper counters and are what long-term statistics and energy-style charts should use.
 
 **A renamed account is reported, not silently blanked.** PowerPool keys its response by username. If the account is renamed the entry stops matching, and rather than reporting a successful poll full of empty readings, the integration fails the update and names what the API returned instead — so the entities go unavailable with a reason in the log.
 

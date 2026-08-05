@@ -25,7 +25,7 @@ from .entity import (
     PowerPoolAlgorithmEntity,
     PowerPoolWorkerEntity,
 )
-from .models import Account, Algorithm, Worker, from_base_rate, hashrate_unit
+from .models import Account, Algorithm, Payment, Worker, from_base_rate, hashrate_unit
 
 # Read-only sensors backed by one coordinator; nothing to serialise on update.
 PARALLEL_UPDATES = 0
@@ -121,24 +121,31 @@ ALGORITHM_SENSORS: tuple[AlgorithmSensorDescription, ...] = (
         native_unit_of_measurement="workers",
         value_fn=lambda algorithm: algorithm.workers_online,
     ),
+    # Deliberately no state_class on the three account-wide share totals.
+    # They are sums over the workers in the *current* payload, so they step
+    # down whenever a rig drops out or the pool resets that rig's counter —
+    # and unlike a worker sensor, this entity stays available while it happens
+    # (its algorithm is still reported). A recorder reading a decrease on an
+    # available TOTAL_INCREASING sensor treats it as a meter reset and adds the
+    # new value on top of the running sum, so every rig reboot would inflate
+    # long-term statistics permanently. The per-worker equivalents below keep
+    # TOTAL_INCREASING, because there a reset is exactly what it describes and
+    # a vanished rig goes unavailable rather than reading zero.
     AlgorithmSensorDescription(
         key="valid_shares",
         translation_key="valid_shares",
-        state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement="shares",
         value_fn=lambda algorithm: algorithm.valid_shares,
     ),
     AlgorithmSensorDescription(
         key="invalid_shares",
         translation_key="invalid_shares",
-        state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement="shares",
         value_fn=lambda algorithm: algorithm.invalid_shares,
     ),
     AlgorithmSensorDescription(
         key="stale_shares",
         translation_key="stale_shares",
-        state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement="shares",
         value_fn=lambda algorithm: algorithm.stale_shares,
     ),
@@ -221,7 +228,7 @@ def _last_payout_time(account: Account, ticker: str) -> datetime | None:
     return payment.when if payment else None
 
 
-def _last_payment(account: Account, ticker: str):
+def _last_payment(account: Account, ticker: str) -> Payment | None:
     """Most recent payment in one coin (payments are already newest-first)."""
     return next((p for p in account.payments if p.ticker == ticker), None)
 

@@ -86,7 +86,7 @@ class PowerPoolCoordinator(DataUpdateCoordinator[Account]):
         # but entirely empty Account — every sensor reading "unknown" on a poll
         # that reported success. Fail the update instead, so the entities go
         # unavailable with a reason attached.
-        if self.username not in payload:
+        if not isinstance(payload.get(self.username), dict):
             raise UpdateFailed(
                 f"PowerPool no longer reports an account named {self.username!r}; "
                 f"it now returns: {', '.join(sorted(payload)) or 'nothing'}"

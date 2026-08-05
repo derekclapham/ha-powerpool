@@ -16,6 +16,7 @@ Initial release. Requires Home Assistant 2025.3 or newer.
 - Binary sensors for account mining state and per-worker online state
 - Configurable poll interval via the options flow
 - Diagnostics download, with the API key, username, payout addresses, transaction ids and worker names redacted
+- Retired rigs can be deleted from their device page; devices the account still reports refuse deletion
 
 ### Notes on the API
 PowerPool's published documentation is incomplete, so a few behaviours were established against a live account:
@@ -27,6 +28,7 @@ PowerPool's published documentation is incomplete, so a few behaviours were esta
 
 ### Internal
 - Hashrates normalised to base units on ingest and rendered in a unit fixed per algorithm, so a changing source unit cannot break long-term statistics
+- Account-wide share totals carry no state class: they sum only the rigs in the current payload, so a rig dropping out would look like a meter reset and permanently inflate recorded statistics. The per-worker counters keep `total_increasing`, where a reset means what it says
 - API keys scrubbed from any error message that can reach the log
 - Account, algorithm and worker devices registered parents-first during setup, rather than letting each platform create them in load order and reference a `via_device` that does not exist yet
 - A response that no longer carries the configured username fails the update instead of parsing into an empty account, so a renamed account surfaces as unavailable entities rather than silent blanks

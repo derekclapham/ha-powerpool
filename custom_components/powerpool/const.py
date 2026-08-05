@@ -10,18 +10,19 @@ DOMAIN = "powerpool"
 LOGGER = logging.getLogger(__package__)
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
-# Keys used in ConfigEntry.data / ConfigEntry.options. The API key is captured
-# during the config flow and never changes shape; the scan interval starts at
-# the default and is overridden from options once the user edits it.
+# Poll interval, stored in ConfigEntry.options once the user edits it via the
+# Configure dialog. The account's API key and username use Home Assistant's own
+# CONF_API_KEY / CONF_USERNAME in ConfigEntry.data.
 CONF_SCAN_INTERVAL = "scan_interval"
 
 DEFAULT_SCAN_INTERVAL = 300  # seconds — pool-side stats are averaged, not live
 MIN_SCAN_INTERVAL = 60
 MAX_SCAN_INTERVAL = 3600
 
-# API. Only two endpoints exist and both are read-only:
-#   /api/user?apiKey=<key>  -> private, keyed by username (see below)
-#   /api/pool               -> public pool-wide stats (unused in this version)
+# API. PowerPool publishes two read-only endpoints; this integration uses only
+# the private one. (The public /api/pool endpoint carries pool-wide stats that
+# are identical for every account, so it belongs on a shared device rather than
+# duplicated per entry — left for a later version.)
 #
 # The user payload is keyed by the account's username, so a response looks like
 #   {"<username>": {"hashrate": {...}, "balances": [...], "workers": {...},
@@ -30,10 +31,10 @@ MAX_SCAN_INTERVAL = 3600
 # response* rather than asked for during setup.
 API_BASE_URL = "https://api.powerpool.io"
 API_USER = "/api/user"
-API_POOL = "/api/pool"
 
-# Query-string parameter carrying the credential. Held here so redaction in
-# diagnostics.py and the log-scrubbing in api.py stay in step.
+# Query-string parameter carrying the credential. Note this is the *API's*
+# spelling; the key under which it is stored in ConfigEntry.data is Home
+# Assistant's CONF_API_KEY ("api_key"), which is what diagnostics redacts on.
 PARAM_API_KEY = "apiKey"
 
 # --- hashrate units -----------------------------------------------------------
