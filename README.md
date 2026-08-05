@@ -91,10 +91,12 @@ Devices can be renamed in Home Assistant if you want shorter entity IDs — rena
 | Hashrate / Hashrate (average) | Same fixed unit as its algorithm |
 | Accepted / rejected / stale shares | This rig only |
 | Share efficiency | This rig only |
-| Blocks found | Blocks this rig has been credited with |
+| Blocks credited | Blocks the pool credits to this rig — **not** Bitcoin blocks, see below |
 | Online | On while the rig reports a non-zero hashrate |
 
 ## Behaviour worth knowing
+
+**"Blocks credited" is not a count of Bitcoin blocks.** PowerPool switches between many SHA-256 coins and merge-mines alongside them, so a rig is credited with blocks on chains whose difficulty is orders of magnitude below Bitcoin's. Treat the figure as a curiosity rather than an earnings signal: the pool pays RTPPS (real-time pay-per-share), so payouts follow accepted shares and hashrate whether or not a block is ever found. If you want numbers that track income, watch **hashrate**, **share efficiency** and **estimated revenue**.
 
 **Only what you actually mine gets entities.** PowerPool returns every algorithm and payout coin it supports on every account, nearly all of them permanently zero — left alone that is around a hundred entities for a single-rig account. Algorithms you do not mine are skipped entirely, since each one would otherwise add an empty device. Coins you have never held live on the existing account device, so they *are* created but arrive switched off: open the account device, choose **+N disabled entities**, and enable any you want to watch.
 
