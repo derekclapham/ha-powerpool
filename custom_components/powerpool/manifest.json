@@ -1,0 +1,14 @@
+{
+  "domain": "powerpool",
+  "name": "PowerPool",
+  "codeowners": [
+    "@derekclapham"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/derekclapham/ha-powerpool",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/derekclapham/ha-powerpool/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

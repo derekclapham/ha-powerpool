@@ -1,0 +1,31 @@
+name: Release
+
+# You tag + publish a GitHub Release (git-flow: only develop, master and the
+# tag are pushed). This injects the release version into manifest.json and
+# ships the integration as a zip attached to the Release. hacs.json sets
+# zip_release, so HACS installs that zip — the installed version always matches
+# the tag, with no manual manifest editing.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build versioned zip
+        run: |
+          version="${{ github.event.release.tag_name }}"
+          version="${version#v}"
+          cd custom_components/powerpool
+          jq --arg v "$version" '.version = $v' manifest.json > manifest.tmp
+          mv manifest.tmp manifest.json
+          zip -rq ../../powerpool.zip . -x '*.pyc' '__pycache__/*'
+      - name: Attach zip to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" powerpool.zip --clobber
