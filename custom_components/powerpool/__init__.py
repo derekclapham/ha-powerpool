@@ -95,7 +95,15 @@ async def async_remove_config_entry_device(
     is refused, so a rig that is merely powered off cannot be deleted by
     accident.
     """
-    return not device.identifiers & _live_identifiers(entry.runtime_data.data)
+    # runtime_data is only set once the first refresh succeeds, and is cleared
+    # on unload. Home Assistant offers the delete button without checking that
+    # the entry is loaded, so a disabled entry — or one stuck retrying setup
+    # because the pool is unreachable — would otherwise raise here and leave
+    # the device permanently undeletable.
+    coordinator = getattr(entry, "runtime_data", None)
+    if coordinator is None or coordinator.data is None:
+        return True
+    return not device.identifiers & _live_identifiers(coordinator.data)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: PowerPoolConfigEntry) -> bool:

@@ -259,7 +259,7 @@ async def async_setup_entry(
     entities: list[SensorEntity] = []
 
     active_coins = account.active_coins
-    for ticker in sorted(set(account.balances) | {p.ticker for p in account.payments}):
+    for ticker in account.known_coins:
         entities.extend(
             PowerPoolCoinSensor(
                 coordinator, ticker, description, enabled=ticker in active_coins
