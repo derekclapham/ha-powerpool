@@ -114,7 +114,6 @@ Devices can be renamed in Home Assistant if you want shorter entity IDs — rena
 
 - Pool-wide public statistics (`/api/pool`) — pool hashrate, miner counts, block counts and pay rates.
 - Backfilling the account's earnings history into long-term statistics.
-- Brand icons and logos.
 
 ## Credits
 

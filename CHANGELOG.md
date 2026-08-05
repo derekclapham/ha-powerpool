@@ -2,6 +2,14 @@
 
 All notable changes to this integration are documented here.
 
+## [Unreleased]
+
+### Features
+- Ship brand icons and logos with the integration
+
+### Internal
+- Drop the `ignore: brands` CI workaround now that the brands check can pass
+
 ## [0.1.0] - 2026-08-05
 
 ### Features
