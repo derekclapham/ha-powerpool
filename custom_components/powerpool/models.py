@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import math
 import re
 from typing import Any
+import unicodedata
 
 from homeassistant.util import dt as dt_util
 
@@ -19,6 +21,10 @@ from .const import (
     ALGORITHM_NAMES,
     ALGORITHM_UNITS,
     DEFAULT_HASHRATE_UNIT,
+    MAX_ALGORITHMS,
+    MAX_NAME_LENGTH,
+    MAX_PAYMENTS,
+    MAX_WORKERS_PER_ALGORITHM,
     RATE_BASES,
     SI_PREFIXES,
 )
@@ -75,16 +81,15 @@ def to_base_rate(value: Any, unit: Any) -> float | None:
     same field because an account only ever mixes them across algorithms, never
     within one sensor.
     """
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not isinstance(unit, str):
+    number = _num(value)
+    if number is None or not isinstance(unit, str):
         return None
     split = _split_unit(unit)
     if split is None:
         return None
-    return number * split[0]
+    scaled = number * split[0]
+    # The multiply itself can overflow to inf from a merely large input.
+    return scaled if math.isfinite(scaled) else None
 
 
 def from_base_rate(base_value: float | None, unit: str) -> float | None:
@@ -98,11 +103,48 @@ def from_base_rate(base_value: float | None, unit: str) -> float | None:
 
 
 def _num(value: Any) -> float | None:
-    """Coerce to float, or None if absent/unparsable."""
+    """Coerce to a finite float, or None if that isn't possible.
+
+    Two hostile inputs get past a naive `float()`: `json.loads` accepts the
+    bare literals `Infinity` and `NaN`, and a long enough integer literal
+    raises OverflowError rather than ValueError. Either would escape this
+    module's defensive parsing and fail every poll with a traceback, so both
+    are rejected here rather than at each call site. Non-finite values are
+    dropped too — `inf` would otherwise reach a sensor state and poison
+    long-term statistics.
+    """
     try:
-        return float(value)
-    except (TypeError, ValueError):
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
         return None
+    return number if math.isfinite(number) else None
+
+
+def sanitise_name(value: Any) -> str | None:
+    """Make an API-supplied name safe to use as an identifier and a label.
+
+    A worker name becomes a Home Assistant device name, part of an entity's
+    unique id, and text in log lines, so it is the main place hostile strings
+    reach the rest of the system. Three things are removed:
+
+    * Unicode control, format and surrogate characters — these carry ANSI
+      escapes that rewrite an operator's terminal when a log line is tailed,
+      newlines that forge extra log entries, and bidi overrides that make a
+      name render as something other than what it is.
+    * Colons, because unique ids and device identifiers are colon-delimited;
+      a name may not introduce a delimiter and collide with another tier.
+    * Excess length, which would otherwise bloat both registries.
+
+    Returns None when nothing usable survives, which drops the entry.
+    """
+    if not isinstance(value, str):
+        return None
+    cleaned = "".join(
+        c
+        for c in value
+        if c != ":" and unicodedata.category(c) not in {"Cc", "Cf", "Co", "Cs"}
+    ).strip()
+    return cleaned[:MAX_NAME_LENGTH] or None
 
 
 def _timestamp(value: Any) -> datetime | None:
@@ -117,6 +159,10 @@ def _timestamp(value: Any) -> datetime | None:
         return None
     if epoch > 1e11:  # milliseconds
         epoch /= 1000
+    # Anything still beyond the year 2100 is not a payout date; showing it
+    # would just put a nonsense timestamp on a device-class TIMESTAMP sensor.
+    if epoch > 4_102_444_800:
+        return None
     try:
         return dt_util.utc_from_timestamp(epoch)
     except (OverflowError, OSError, ValueError):
@@ -148,12 +194,12 @@ class Worker:
     @classmethod
     def parse(cls, raw: dict[str, Any]) -> Worker | None:
         """Build a Worker, or None when the entry carries no usable name."""
-        name = raw.get("name")
-        if not isinstance(name, str) or not name.strip():
+        name = sanitise_name(raw.get("name"))
+        if name is None:
             return None
         blocks = _num(raw.get("blocks"))
         return cls(
-            name=name.strip(),
+            name=name,
             hashrate=to_base_rate(raw.get("hashrate"), raw.get("hashrate_units")),
             hashrate_avg=to_base_rate(
                 raw.get("hashrate_avg"), raw.get("hashrate_avg_units")
@@ -241,16 +287,18 @@ class Payment:
     def parse(cls, raw: dict[str, Any]) -> Payment | None:
         """Build a Payment, or None when the amount or coin is unusable."""
         value = _num(raw.get("value"))
-        ticker = raw.get("ticker")
-        if value is None or not isinstance(ticker, str) or not ticker:
+        # The ticker becomes part of an entity's unique id and its name, so it
+        # goes through the same sanitiser as a worker name.
+        ticker = sanitise_name(raw.get("ticker"))
+        if value is None or ticker is None:
             return None
         # The published docs say "txID"; the API actually sends "txid". Accept
         # both so this keeps working whichever way PowerPool settles.
-        txid = raw.get("txid") or raw.get("txID")
+        txid = sanitise_name(raw.get("txid") or raw.get("txID"))
         return cls(
             ticker=ticker.upper(),
             value=value,
-            txid=txid if isinstance(txid, str) and txid else None,
+            txid=txid,
             when=_timestamp(raw.get("timestamp")),
         )
 
@@ -330,10 +378,14 @@ def parse_account(payload: dict[str, Any], username: str) -> Account:
     if not isinstance(body, dict):
         return Account(username=username)
 
+    # Every list and map below is attacker-controlled if the pool is
+    # compromised, and each entry costs a Home Assistant device or entity that
+    # persists in .storage across restarts. Truncating on ingest is what stops
+    # one hostile response from permanently bloating the registries.
     algorithms: dict[str, Algorithm] = {}
     raw_hashrates = body.get("hashrate")
     if isinstance(raw_hashrates, dict):
-        for raw_key, raw_value in raw_hashrates.items():
+        for raw_key, raw_value in list(raw_hashrates.items())[:MAX_ALGORITHMS]:
             if not isinstance(raw_value, dict):
                 continue
             key = normalise_algorithm(str(raw_key))
@@ -353,7 +405,7 @@ def parse_account(payload: dict[str, Any], username: str) -> Account:
     # not yet credited with hashrate), so missing entries are created.
     raw_workers = body.get("workers")
     if isinstance(raw_workers, dict):
-        for raw_key, entries in raw_workers.items():
+        for raw_key, entries in list(raw_workers.items())[:MAX_ALGORITHMS]:
             if not isinstance(entries, list):
                 continue
             key = normalise_algorithm(str(raw_key))
@@ -363,7 +415,7 @@ def parse_account(payload: dict[str, Any], username: str) -> Account:
                     key=key, hashrate=None, hashrate_avg=None, revenue_24h_usd=None
                 )
                 algorithms[key] = algorithm
-            for entry in entries:
+            for entry in entries[:MAX_WORKERS_PER_ALGORITHM]:
                 if not isinstance(entry, dict):
                     continue
                 if (worker := Worker.parse(entry)) is not None:
@@ -372,18 +424,18 @@ def parse_account(payload: dict[str, Any], username: str) -> Account:
     balances: dict[str, float] = {}
     raw_balances = body.get("balances")
     if isinstance(raw_balances, list):
-        for entry in raw_balances:
+        for entry in raw_balances[:MAX_ALGORITHMS]:
             if not isinstance(entry, dict):
                 continue
-            ticker = entry.get("coinTicker")
+            ticker = sanitise_name(entry.get("coinTicker"))
             amount = _num(entry.get("balance"))
-            if isinstance(ticker, str) and ticker and amount is not None:
+            if ticker and amount is not None:
                 balances[ticker.upper()] = amount
 
     payments: list[Payment] = []
     raw_payments = body.get("payments")
     if isinstance(raw_payments, list):
-        for entry in raw_payments:
+        for entry in raw_payments[:MAX_PAYMENTS]:
             if isinstance(entry, dict) and (payment := Payment.parse(entry)):
                 payments.append(payment)
     # Newest first, so `last_payment` is payments[0]. Undated payouts sort last
@@ -403,5 +455,15 @@ def usernames_in(payload: dict[str, Any]) -> list[str]:
 
     The API key alone selects the account, so this is how setup discovers the
     username instead of asking the user to type it.
+
+    Names that don't survive sanitising are dropped rather than offered. A
+    username is the root of every device identifier and unique id in the entry,
+    so one containing the `:` delimiter could be chosen to collide with another
+    account's algorithm tier — `alice` plus `alice:sha256` would have the second
+    account's device identifier equal the first account's SHA-256 device.
     """
-    return sorted(k for k, v in payload.items() if isinstance(v, dict))
+    return sorted(
+        k
+        for k, v in payload.items()
+        if isinstance(v, dict) and sanitise_name(k) == k
+    )

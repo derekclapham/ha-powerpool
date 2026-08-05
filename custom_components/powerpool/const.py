@@ -74,6 +74,25 @@ ALGORITHM_UNITS: dict[str, str] = {
 }
 DEFAULT_HASHRATE_UNIT = "GH/s"
 
+# --- limits on untrusted payload data ------------------------------------------
+# Everything below `/api/user` is attacker-controlled if the pool is compromised
+# or intercepted. Each worker becomes a Home Assistant device carrying eight
+# entities, and the device and entity registries are held in memory and rewritten
+# to .storage on every change — so an unbounded worker list is a durable,
+# restart-surviving denial of service, not just a slow poll. These caps are far
+# above any real mining operation.
+MAX_WORKERS_PER_ALGORITHM = 250
+MAX_ALGORITHMS = 32
+MAX_PAYMENTS = 500
+# Names reach device names, entity ids and log lines.
+MAX_NAME_LENGTH = 64
+
+# Ceiling on a single API response. A real payload is a few KB; without a cap a
+# compressed reply can inflate to hundreds of MB in memory before it is parsed
+# (aiohttp decompresses transparently and applies no ratio limit), which will
+# OOM a small Home Assistant host.
+MAX_RESPONSE_BYTES = 2_000_000
+
 # Display precision for coin balances and payouts. Most coins are quoted in
 # eight decimals; stablecoins read better at two.
 COIN_PRECISION: dict[str, int] = {"USDC": 2, "USDT": 2}
