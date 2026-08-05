@@ -81,6 +81,18 @@ class PowerPoolCoordinator(DataUpdateCoordinator[Account]):
             raise UpdateFailed(str(err)) from err
 
         self._auth_failures = 0
+
+        # The payload is keyed by username, so an account that has been renamed
+        # (or a key that now maps elsewhere) would parse into a perfectly valid
+        # but entirely empty Account — every sensor reading "unknown" on a poll
+        # that reported success. Fail the update instead, so the entities go
+        # unavailable with a reason attached.
+        if self.username not in payload:
+            raise UpdateFailed(
+                f"PowerPool no longer reports an account named {self.username!r}; "
+                f"it now returns: {', '.join(sorted(payload)) or 'nothing'}"
+            )
+
         return parse_account(payload, self.username)
 
 

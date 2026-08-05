@@ -20,3 +20,4 @@ Initial release.
 - Hashrates normalised to base units on ingest and rendered in a unit fixed per algorithm, so a changing source unit cannot break long-term statistics
 - API keys scrubbed from error messages and redacted from diagnostics
 - Empty API responses tolerated for a few polls before triggering reauthentication, since PowerPool signals a rejected key with `200 {}` rather than an HTTP error
+- A response that no longer carries the configured username fails the update instead of parsing into an empty account, so a renamed account surfaces as unavailable entities rather than silent blanks

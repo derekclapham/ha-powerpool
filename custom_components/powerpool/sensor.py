@@ -69,7 +69,7 @@ COIN_SENSORS: tuple[CoinSensorDescription, ...] = (
         # TOTAL rather than TOTAL_INCREASING: the payments list the API returns
         # is finite, so the lifetime sum can step *down* as old payouts age out.
         state_class=SensorStateClass.TOTAL,
-        value_fn=lambda account, ticker: account.total_paid(ticker) or None,
+        value_fn=lambda account, ticker: account.total_paid(ticker),
     ),
     CoinSensorDescription(
         key="last_payout",
@@ -105,7 +105,10 @@ ALGORITHM_SENSORS: tuple[AlgorithmSensorDescription, ...] = (
     AlgorithmSensorDescription(
         key="revenue_24h",
         translation_key="revenue_24h",
-        device_class=SensorDeviceClass.MONETARY,
+        # Deliberately not SensorDeviceClass.MONETARY: that device class only
+        # accepts state_class TOTAL (an accumulating amount of money), and this
+        # is a forward-looking *rate* that rises and falls. Plain USD keeps the
+        # measurement semantics and still records statistics.
         native_unit_of_measurement="USD",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,

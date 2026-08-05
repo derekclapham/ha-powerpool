@@ -100,6 +100,8 @@ Devices can be renamed in Home Assistant if you want shorter entity IDs — rena
 
 **A rig that disappears goes unavailable, not missing.** If a miner is unplugged or reboots, PowerPool stops listing it and its entities become unavailable — they are never removed, so history survives. `Online` turning *off* means something different: the rig is still known to the pool but has fallen to zero hashrate.
 
+**A renamed account is reported, not silently blanked.** PowerPool keys its response by username. If the account is renamed the entry stops matching, and rather than reporting a successful poll full of empty readings, the integration fails the update and names what the API returned instead — so the entities go unavailable with a reason in the log.
+
 **Rejected keys are detected, not guessed at.** PowerPool answers a bad API key with an empty `200` response rather than an HTTP error, which is also what a server-side blip would look like. An account that has been polling happily is given a few consecutive empty responses before the integration concludes the key is dead and asks you to re-enter it.
 
 ## Not included yet
